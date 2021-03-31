@@ -1,0 +1,25 @@
+GeneratorModel for yakindu::java {
+
+	const PROJECT : string = "RoboticDog"
+
+	const FOLDER : string = "src"
+
+	statechart onoff {
+
+		feature Outlet {
+			targetProject = PROJECT
+			targetFolder = FOLDER
+			libraryTargetFolder = "src"
+		}
+		
+		feature Naming {
+			basePackage =  "robotic.dog" 
+		}
+		
+		feature GeneralFeatures {
+			RuntimeService = false
+			TimerService = true
+			synchronized = true
+		}
+	}
+}

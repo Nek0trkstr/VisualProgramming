@@ -9,26 +9,24 @@ public class Main {
 		Onoff stateMachine = new Onoff();
 		ITimerService timerService = new TimerService();
 		stateMachine.setTimerService(timerService);
-		
-		// Subscribe to events
-		stateMachine.legs().getRun().subscribe((e) -> System.out.println("Legs: Running"));
-		stateMachine.legs().getStand().subscribe((e) -> System.out.println("Legs: Standing"));
-		stateMachine.legs().getWalk().subscribe((e) -> System.out.println("Legs: Walking"));
-		stateMachine.voice().getBark().subscribe((e) -> System.out.println("Voice: Bark Bark"));
-		stateMachine.voice().getHowl().subscribe((e) -> System.out.println("Voice: Howl"));
-		stateMachine.voice().getSilent().subscribe((e) -> System.out.println("Voice: Silent"));
-		stateMachine.tail().getIdle().subscribe((e) -> System.out.println("Tail: Idle"));
-		stateMachine.tail().getWagging().subscribe((e) -> System.out.println("Tail: Wagging"));
 
 		new WindowFrame(
 				stateMachine::raiseFetchCommand, 
 				stateMachine::raiseComeCommand, 
-				stateMachine::raiseComeCommand, 
+				stateMachine::raiseBarkCommand, 
 				stateMachine.battery().getNormal(), 
 				stateMachine.battery().getLow(), 
 				stateMachine.battery().getDrained(),
 				stateMachine::raiseChargerConnected,
-				stateMachine::raiseChargerDisconnected
+				stateMachine::raiseChargerDisconnected,
+				stateMachine.legs().getStand(),
+				stateMachine.legs().getWalk(),
+				stateMachine.legs().getRun(),
+				stateMachine.voice().getSilent(),
+				stateMachine.voice().getBark(),
+				stateMachine.voice().getHowl(),
+				stateMachine.tail().getIdle(),
+				stateMachine.tail().getWagging()
 				);
 		stateMachine.enter();
 		

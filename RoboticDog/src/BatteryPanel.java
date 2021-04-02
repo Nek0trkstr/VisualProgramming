@@ -1,7 +1,10 @@
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.BoxLayout;
+
+import java.awt.FlowLayout;
+
+
 
 import com.yakindu.core.rx.Observable;
 
@@ -33,7 +36,8 @@ public class BatteryPanel extends JPanel {
 		disconnectChargerButton.setText("Disconnect Charger");
 		disconnectChargerButton.addActionListener((e) -> disconnectChargerFunc.run());
 		
-		this.setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+//		this.setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+		this.setLayout(new FlowLayout());
 		this.add(title);
 		this.add(batteryStatus);
 		this.add(connectChargerButton);

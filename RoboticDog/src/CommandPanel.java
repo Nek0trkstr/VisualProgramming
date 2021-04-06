@@ -6,7 +6,7 @@ public class CommandPanel extends JPanel {
 	private static final long serialVersionUID = 1L;
 	protected JButton fetchCommand;
 	
-	public CommandPanel(Runnable raiseFetchCommand, Runnable raiseComeCommand, Runnable raiseBarkCommand) {
+	public CommandPanel(Runnable raiseFetchCommand, Runnable raiseComeCommand, Runnable raiseBarkCommand, Runnable raisePet) {
 		this.setLayout(new FlowLayout());
 		
 		JButton fetchCommand = new JButton();
@@ -21,9 +21,14 @@ public class CommandPanel extends JPanel {
 		barkCommand.addActionListener((e) -> raiseBarkCommand.run());
 		barkCommand.setText("Bark");
 		
+		JButton pet = new JButton();
+		pet.addActionListener((e) -> raisePet.run());
+		pet.setText("Give Pets");
+		
 		this.add(fetchCommand);
 		this.add(comeCommand);
 		this.add(barkCommand);
+		this.add(pet);
 	}
 	
 }

@@ -299,7 +299,7 @@ public class Onoff implements IStatemachine, ITimed {
 			
 	private ITimerService timerService;
 	
-	private final boolean[] timeEvents = new boolean[7];
+	private final boolean[] timeEvents = new boolean[8];
 	
 	private BlockingQueue<Runnable> internalEventQueue = new LinkedBlockingQueue<Runnable>();
 	private BlockingQueue<Runnable> inEventQueue = new LinkedBlockingQueue<Runnable>();
@@ -565,8 +565,6 @@ public class Onoff implements IStatemachine, ITimed {
 		chargerConnected = false;
 		chargerDisconnected = false;
 		pet = false;
-		raiseTemperature = false;
-		lowerTemperature = false;
 		timeEvents[0] = false;
 		timeEvents[1] = false;
 		timeEvents[2] = false;
@@ -574,6 +572,7 @@ public class Onoff implements IStatemachine, ITimed {
 		timeEvents[4] = false;
 		timeEvents[5] = false;
 		timeEvents[6] = false;
+		timeEvents[7] = false;
 	}
 	
 	private void clearInternalEvents() {
@@ -715,7 +714,7 @@ public class Onoff implements IStatemachine, ITimed {
 			clearInEvents();
 			clearInternalEvents();
 			nextEvent();
-		} while ((((((((((((((((((turnOff || turnOn) || barkCommand) || fetchCommand) || comeCommand) || chargerConnected) || chargerDisconnected) || pet) || raiseTemperature) || lowerTemperature) || attentionNeeded) || timeEvents[0]) || timeEvents[1]) || timeEvents[2]) || timeEvents[3]) || timeEvents[4]) || timeEvents[5]) || timeEvents[6]));
+		} while (((((((((((((((((turnOff || turnOn) || barkCommand) || fetchCommand) || comeCommand) || chargerConnected) || chargerDisconnected) || pet) || attentionNeeded) || timeEvents[0]) || timeEvents[1]) || timeEvents[2]) || timeEvents[3]) || timeEvents[4]) || timeEvents[5]) || timeEvents[6]) || timeEvents[7]));
 		
 		isExecuting = false;
 	}
@@ -957,36 +956,6 @@ public class Onoff implements IStatemachine, ITimed {
 		}
 	}
 	
-	private boolean raiseTemperature;
-	
-	
-	public void raiseRaiseTemperature() {
-		synchronized(Onoff.this) {
-			inEventQueue.add(new Runnable() {
-				@Override
-				public void run() {
-					raiseTemperature = true;
-				}
-			});
-			runCycle();
-		}
-	}
-	
-	private boolean lowerTemperature;
-	
-	
-	public void raiseLowerTemperature() {
-		synchronized(Onoff.this) {
-			inEventQueue.add(new Runnable() {
-				@Override
-				public void run() {
-					lowerTemperature = true;
-				}
-			});
-			runCycle();
-		}
-	}
-	
 	private long currentTemp;
 	
 	public synchronized long getCurrentTemp() {
@@ -1003,6 +972,8 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Entry action for state 'Stand'. */
 	private void entryAction_main_region_On_Legs_Stand() {
+		timerService.setTimer(this, 0, (5 * 1000), false);
+		
 		setEnergyReq(energyReqBaseline);
 		
 		legs.raiseStand();
@@ -1010,7 +981,7 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Entry action for state 'Walk'. */
 	private void entryAction_main_region_On_Legs_Walk() {
-		timerService.setTimer(this, 0, (5 * 1000), false);
+		timerService.setTimer(this, 1, (5 * 1000), false);
 		
 		setEnergyReq((energyReqBaseline * 2));
 		
@@ -1019,7 +990,7 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Entry action for state 'Run'. */
 	private void entryAction_main_region_On_Legs_Run() {
-		timerService.setTimer(this, 1, (5 * 1000), false);
+		timerService.setTimer(this, 2, (5 * 1000), false);
 		
 		setEnergyReq((energyReqBaseline * 3));
 		
@@ -1033,14 +1004,14 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Entry action for state 'Bark'. */
 	private void entryAction_main_region_On_Voice_Bark() {
-		timerService.setTimer(this, 2, (5 * 1000), false);
+		timerService.setTimer(this, 3, (5 * 1000), false);
 		
 		voice.raiseBark();
 	}
 	
 	/* Entry action for state 'Howl'. */
 	private void entryAction_main_region_On_Voice_Howl() {
-		timerService.setTimer(this, 3, (5 * 1000), false);
+		timerService.setTimer(this, 4, (5 * 1000), false);
 		
 		voice.raiseHowl();
 	}
@@ -1062,7 +1033,7 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Entry action for state 'Love'. */
 	private void entryAction_main_region_On_Emotion_Love() {
-		timerService.setTimer(this, 4, (5 * 1000), false);
+		timerService.setTimer(this, 5, (5 * 1000), false);
 		
 		emotion.raiseLove();
 	}
@@ -1085,6 +1056,8 @@ public class Onoff implements IStatemachine, ITimed {
 	/* Entry action for state 'Normal'. */
 	private void entryAction_main_region_On_Battery_default_Status_Normal() {
 		battery.raiseNormal();
+		
+		setBatteryPenalty(0);
 	}
 	
 	/* Entry action for state 'Low'. */
@@ -1103,47 +1076,52 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Entry action for state 'Consume'. */
 	private void entryAction_main_region_On_Battery_default_Energy_Consume() {
-		timerService.setTimer(this, 5, (1 * 1000), true);
+		timerService.setTimer(this, 6, (1 * 1000), true);
 	}
 	
 	/* Entry action for state 'Charge'. */
 	private void entryAction_main_region_On_Battery_default_Energy_Charge() {
-		timerService.setTimer(this, 6, (1 * 1000), true);
+		timerService.setTimer(this, 7, (1 * 1000), true);
+	}
+	
+	/* Exit action for state 'Stand'. */
+	private void exitAction_main_region_On_Legs_Stand() {
+		timerService.unsetTimer(this, 0);
 	}
 	
 	/* Exit action for state 'Walk'. */
 	private void exitAction_main_region_On_Legs_Walk() {
-		timerService.unsetTimer(this, 0);
+		timerService.unsetTimer(this, 1);
 	}
 	
 	/* Exit action for state 'Run'. */
 	private void exitAction_main_region_On_Legs_Run() {
-		timerService.unsetTimer(this, 1);
+		timerService.unsetTimer(this, 2);
 	}
 	
 	/* Exit action for state 'Bark'. */
 	private void exitAction_main_region_On_Voice_Bark() {
-		timerService.unsetTimer(this, 2);
+		timerService.unsetTimer(this, 3);
 	}
 	
 	/* Exit action for state 'Howl'. */
 	private void exitAction_main_region_On_Voice_Howl() {
-		timerService.unsetTimer(this, 3);
+		timerService.unsetTimer(this, 4);
 	}
 	
 	/* Exit action for state 'Love'. */
 	private void exitAction_main_region_On_Emotion_Love() {
-		timerService.unsetTimer(this, 4);
+		timerService.unsetTimer(this, 5);
 	}
 	
 	/* Exit action for state 'Consume'. */
 	private void exitAction_main_region_On_Battery_default_Energy_Consume() {
-		timerService.unsetTimer(this, 5);
+		timerService.unsetTimer(this, 6);
 	}
 	
 	/* Exit action for state 'Charge'. */
 	private void exitAction_main_region_On_Battery_default_Energy_Charge() {
-		timerService.unsetTimer(this, 6);
+		timerService.unsetTimer(this, 7);
 	}
 	
 	/* 'default' enter sequence for state Off */
@@ -1384,6 +1362,8 @@ public class Onoff implements IStatemachine, ITimed {
 	private void exitSequence_main_region_On_Legs_Stand() {
 		stateVector[0] = State.$NULLSTATE$;
 		stateConfVectorPosition = 0;
+		
+		exitAction_main_region_On_Legs_Stand();
 	}
 	
 	/* Default exit sequence for state Walk */
@@ -1863,6 +1843,12 @@ public class Onoff implements IStatemachine, ITimed {
 					exitSequence_main_region_On_Legs_Stand();
 					enterSequence_main_region_On_Legs_Walk_default();
 					transitioned_after = 0;
+				} else {
+					if (((timeEvents[0]) && ((isStateActive(State.MAIN_REGION_ON_HEALTH_GOOD) && !isStateActive(State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CHARGE))))) {
+						exitSequence_main_region_On_Legs_Stand();
+						enterSequence_main_region_On_Legs_Walk_default();
+						transitioned_after = 0;
+					}
 				}
 			}
 		}
@@ -1878,7 +1864,7 @@ public class Onoff implements IStatemachine, ITimed {
 				enterSequence_main_region_On_Legs_Run_default();
 				transitioned_after = 0;
 			} else {
-				if (timeEvents[0]) {
+				if (timeEvents[1]) {
 					exitSequence_main_region_On_Legs_Walk();
 					enterSequence_main_region_On_Legs_Stand_default();
 					transitioned_after = 0;
@@ -1892,7 +1878,7 @@ public class Onoff implements IStatemachine, ITimed {
 		long transitioned_after = transitioned_before;
 		
 		if (transitioned_after<0) {
-			if (timeEvents[1]) {
+			if (timeEvents[2]) {
 				exitSequence_main_region_On_Legs_Run();
 				enterSequence_main_region_On_Legs_Stand_default();
 				transitioned_after = 0;
@@ -1924,10 +1910,16 @@ public class Onoff implements IStatemachine, ITimed {
 		long transitioned_after = transitioned_before;
 		
 		if (transitioned_after<1) {
-			if (timeEvents[2]) {
+			if (timeEvents[3]) {
 				exitSequence_main_region_On_Voice_Bark();
 				enterSequence_main_region_On_Voice_Silent_default();
 				transitioned_after = 1;
+			} else {
+				if (attentionNeeded) {
+					exitSequence_main_region_On_Voice_Bark();
+					enterSequence_main_region_On_Voice_Howl_default();
+					transitioned_after = 1;
+				}
 			}
 		}
 		return transitioned_after;
@@ -1937,7 +1929,7 @@ public class Onoff implements IStatemachine, ITimed {
 		long transitioned_after = transitioned_before;
 		
 		if (transitioned_after<1) {
-			if (timeEvents[3]) {
+			if (timeEvents[4]) {
 				exitSequence_main_region_On_Voice_Howl();
 				enterSequence_main_region_On_Voice_Silent_default();
 				transitioned_after = 1;
@@ -1989,7 +1981,7 @@ public class Onoff implements IStatemachine, ITimed {
 		long transitioned_after = transitioned_before;
 		
 		if (transitioned_after<3) {
-			if (timeEvents[4]) {
+			if (timeEvents[5]) {
 				exitSequence_main_region_On_Emotion_Love();
 				enterSequence_main_region_On_Emotion_Normal_default();
 				transitioned_after = 3;
@@ -2109,7 +2101,7 @@ public class Onoff implements IStatemachine, ITimed {
 		}
 		/* If no transition was taken then execute local reactions */
 		if (transitioned_after==transitioned_before) {
-			if (timeEvents[5]) {
+			if (timeEvents[6]) {
 				setCurrentEnergy(getCurrentEnergy() - energyReq);
 			}
 			transitioned_after = main_region_On_Battery_default_react(transitioned_before);
@@ -2130,7 +2122,7 @@ public class Onoff implements IStatemachine, ITimed {
 		}
 		/* If no transition was taken then execute local reactions */
 		if (transitioned_after==transitioned_before) {
-			if (((timeEvents[6]) && (getCurrentEnergy()<getMaxEnergy()))) {
+			if (((timeEvents[7]) && (getCurrentEnergy()<getMaxEnergy()))) {
 				setCurrentEnergy(getCurrentEnergy() + ((energyReqBaseline * 5)));
 			}
 			transitioned_after = main_region_On_Battery_default_react(transitioned_before);

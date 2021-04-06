@@ -9,11 +9,12 @@ public class Main {
 		Onoff stateMachine = new Onoff();
 		ITimerService timerService = new TimerService();
 		stateMachine.setTimerService(timerService);
-
+		
 		new WindowFrame(
 				stateMachine::raiseFetchCommand, 
 				stateMachine::raiseComeCommand, 
-				stateMachine::raiseBarkCommand, 
+				stateMachine::raiseBarkCommand,
+				stateMachine::raisePet,
 				stateMachine.battery().getNormal(), 
 				stateMachine.battery().getLow(), 
 				stateMachine.battery().getDrained(),
@@ -26,11 +27,12 @@ public class Main {
 				stateMachine.voice().getBark(),
 				stateMachine.voice().getHowl(),
 				stateMachine.tail().getIdle(),
-				stateMachine.tail().getWagging()
-				);
+				stateMachine.tail().getWagging(),
+				stateMachine.emotion().getNormal(),
+				stateMachine.emotion().getLove(),
+				stateMachine
+			);
 		stateMachine.enter();
-		
-		
 	}
 	
 }

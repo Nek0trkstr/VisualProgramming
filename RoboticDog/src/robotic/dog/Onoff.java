@@ -217,6 +217,46 @@ public class Onoff implements IStatemachine, ITimed {
 		
 	}
 	
+	public static class Emotion {
+		private Onoff parent;
+		
+		public Emotion(Onoff parent) {
+			this.parent = parent;
+		}
+		private boolean normal;
+		
+		
+		protected void raiseNormal() {
+			synchronized(parent) {
+				normal = true;
+				normalObservable.next(null);
+			}
+		}
+		
+		private Observable<Void> normalObservable = new Observable<Void>();
+		
+		public Observable<Void> getNormal() {
+			return normalObservable;
+		}
+		
+		private boolean love;
+		
+		
+		protected void raiseLove() {
+			synchronized(parent) {
+				love = true;
+				loveObservable.next(null);
+			}
+		}
+		
+		private Observable<Void> loveObservable = new Observable<Void>();
+		
+		public Observable<Void> getLove() {
+			return loveObservable;
+		}
+		
+	}
+	
 	protected Legs legs;
 	
 	protected Voice voice;
@@ -224,6 +264,8 @@ public class Onoff implements IStatemachine, ITimed {
 	protected Tail tail;
 	
 	protected Battery battery;
+	
+	protected Emotion emotion;
 	
 	public enum State {
 		MAIN_REGION_OFF,
@@ -236,6 +278,8 @@ public class Onoff implements IStatemachine, ITimed {
 		MAIN_REGION_ON_VOICE_HOWL,
 		MAIN_REGION_ON_TAIL_IDLE,
 		MAIN_REGION_ON_TAIL_WAGGING,
+		MAIN_REGION_ON_EMOTION_NORMAL,
+		MAIN_REGION_ON_EMOTION_LOVE,
 		MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT,
 		MAIN_REGION_ON_TEMPERATURE_SENSOR_OPTIMAL,
 		MAIN_REGION_ON_TEMPERATURE_SENSOR_COLD,
@@ -251,11 +295,11 @@ public class Onoff implements IStatemachine, ITimed {
 		$NULLSTATE$
 	};
 	
-	private final State[] stateVector = new State[7];
+	private final State[] stateVector = new State[8];
 			
 	private ITimerService timerService;
 	
-	private final boolean[] timeEvents = new boolean[6];
+	private final boolean[] timeEvents = new boolean[7];
 	
 	private BlockingQueue<Runnable> internalEventQueue = new LinkedBlockingQueue<Runnable>();
 	private BlockingQueue<Runnable> inEventQueue = new LinkedBlockingQueue<Runnable>();
@@ -331,21 +375,6 @@ public class Onoff implements IStatemachine, ITimed {
 	protected void setEnergyReq(long value) {
 		synchronized(Onoff.this) {
 			this.energyReq = value;
-		}
-	}
-	
-	
-	private long currentTemp;
-	
-	protected long getCurrentTemp() {
-		synchronized(Onoff.this) {
-			return currentTemp;
-		}
-	}
-	
-	protected void setCurrentTemp(long value) {
-		synchronized(Onoff.this) {
-			this.currentTemp = value;
 		}
 	}
 	
@@ -456,14 +485,17 @@ public class Onoff implements IStatemachine, ITimed {
 		voice = new Voice(this);
 		tail = new Tail(this);
 		battery = new Battery(this);
-		for (int i = 0; i < 7; i++) {
+		emotion = new Emotion(this);
+		for (int i = 0; i < 8; i++) {
 			stateVector[i] = State.$NULLSTATE$;
 		}
 		
 		clearInEvents();
 		clearInternalEvents();
 		
-		setMaxEnergy(300);
+		setCurrentTemp(28);
+		
+		setMaxEnergy(1000);
 		
 		setCurrentEnergy(maxEnergy);
 		
@@ -472,8 +504,6 @@ public class Onoff implements IStatemachine, ITimed {
 		setEnergyReqBaseline(10);
 		
 		setEnergyReq(energyReqBaseline);
-		
-		setCurrentTemp(28);
 		
 		setHotTempThreshold(38);
 		
@@ -515,7 +545,7 @@ public class Onoff implements IStatemachine, ITimed {
 	 * @see IStatemachine#isActive()
 	 */
 	public synchronized boolean isActive() {
-		return stateVector[0] != State.$NULLSTATE$||stateVector[1] != State.$NULLSTATE$||stateVector[2] != State.$NULLSTATE$||stateVector[3] != State.$NULLSTATE$||stateVector[4] != State.$NULLSTATE$||stateVector[5] != State.$NULLSTATE$||stateVector[6] != State.$NULLSTATE$;
+		return stateVector[0] != State.$NULLSTATE$||stateVector[1] != State.$NULLSTATE$||stateVector[2] != State.$NULLSTATE$||stateVector[3] != State.$NULLSTATE$||stateVector[4] != State.$NULLSTATE$||stateVector[5] != State.$NULLSTATE$||stateVector[6] != State.$NULLSTATE$||stateVector[7] != State.$NULLSTATE$;
 	}
 	
 	/** 
@@ -534,12 +564,16 @@ public class Onoff implements IStatemachine, ITimed {
 		comeCommand = false;
 		chargerConnected = false;
 		chargerDisconnected = false;
+		pet = false;
+		raiseTemperature = false;
+		lowerTemperature = false;
 		timeEvents[0] = false;
 		timeEvents[1] = false;
 		timeEvents[2] = false;
 		timeEvents[3] = false;
 		timeEvents[4] = false;
 		timeEvents[5] = false;
+		timeEvents[6] = false;
 	}
 	
 	private void clearInternalEvents() {
@@ -596,6 +630,18 @@ public class Onoff implements IStatemachine, ITimed {
 		}
 		if (getStateConfVectorPosition()<3) {
 			switch (stateVector[3]) {
+			case MAIN_REGION_ON_EMOTION_NORMAL:
+				transitioned = main_region_On_Emotion_Normal_react(transitioned);
+				break;
+			case MAIN_REGION_ON_EMOTION_LOVE:
+				transitioned = main_region_On_Emotion_Love_react(transitioned);
+				break;
+			default:
+				break;
+			}
+		}
+		if (getStateConfVectorPosition()<4) {
+			switch (stateVector[4]) {
 			case MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT:
 				transitioned = main_region_On_Temperature_Sensor_Hot_react(transitioned);
 				break;
@@ -609,8 +655,8 @@ public class Onoff implements IStatemachine, ITimed {
 				break;
 			}
 		}
-		if (getStateConfVectorPosition()<4) {
-			switch (stateVector[4]) {
+		if (getStateConfVectorPosition()<5) {
+			switch (stateVector[5]) {
 			case MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_NORMAL:
 				transitioned = main_region_On_Battery_default_Status_Normal_react(transitioned);
 				break;
@@ -624,8 +670,8 @@ public class Onoff implements IStatemachine, ITimed {
 				break;
 			}
 		}
-		if (getStateConfVectorPosition()<5) {
-			switch (stateVector[5]) {
+		if (getStateConfVectorPosition()<6) {
+			switch (stateVector[6]) {
 			case MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CONSUME:
 				transitioned = main_region_On_Battery_default_Energy_Consume_react(transitioned);
 				break;
@@ -636,8 +682,8 @@ public class Onoff implements IStatemachine, ITimed {
 				break;
 			}
 		}
-		if (getStateConfVectorPosition()<6) {
-			switch (stateVector[6]) {
+		if (getStateConfVectorPosition()<7) {
+			switch (stateVector[7]) {
 			case MAIN_REGION_ON_HEALTH_GOOD:
 				transitioned = main_region_On_Health_Good_react(transitioned);
 				break;
@@ -669,7 +715,7 @@ public class Onoff implements IStatemachine, ITimed {
 			clearInEvents();
 			clearInternalEvents();
 			nextEvent();
-		} while ((((((((((((((turnOff || turnOn) || barkCommand) || fetchCommand) || comeCommand) || chargerConnected) || chargerDisconnected) || attentionNeeded) || timeEvents[0]) || timeEvents[1]) || timeEvents[2]) || timeEvents[3]) || timeEvents[4]) || timeEvents[5]));
+		} while ((((((((((((((((((turnOff || turnOn) || barkCommand) || fetchCommand) || comeCommand) || chargerConnected) || chargerDisconnected) || pet) || raiseTemperature) || lowerTemperature) || attentionNeeded) || timeEvents[0]) || timeEvents[1]) || timeEvents[2]) || timeEvents[3]) || timeEvents[4]) || timeEvents[5]) || timeEvents[6]));
 		
 		isExecuting = false;
 	}
@@ -711,31 +757,35 @@ public class Onoff implements IStatemachine, ITimed {
 			return stateVector[2] == State.MAIN_REGION_ON_TAIL_IDLE;
 		case MAIN_REGION_ON_TAIL_WAGGING:
 			return stateVector[2] == State.MAIN_REGION_ON_TAIL_WAGGING;
+		case MAIN_REGION_ON_EMOTION_NORMAL:
+			return stateVector[3] == State.MAIN_REGION_ON_EMOTION_NORMAL;
+		case MAIN_REGION_ON_EMOTION_LOVE:
+			return stateVector[3] == State.MAIN_REGION_ON_EMOTION_LOVE;
 		case MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT:
-			return stateVector[3] == State.MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT;
+			return stateVector[4] == State.MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT;
 		case MAIN_REGION_ON_TEMPERATURE_SENSOR_OPTIMAL:
-			return stateVector[3] == State.MAIN_REGION_ON_TEMPERATURE_SENSOR_OPTIMAL;
+			return stateVector[4] == State.MAIN_REGION_ON_TEMPERATURE_SENSOR_OPTIMAL;
 		case MAIN_REGION_ON_TEMPERATURE_SENSOR_COLD:
-			return stateVector[3] == State.MAIN_REGION_ON_TEMPERATURE_SENSOR_COLD;
+			return stateVector[4] == State.MAIN_REGION_ON_TEMPERATURE_SENSOR_COLD;
 		case MAIN_REGION_ON_BATTERY_DEFAULT:
-			return stateVector[4].ordinal() >= State.
-					MAIN_REGION_ON_BATTERY_DEFAULT.ordinal()&& stateVector[4].ordinal() <= State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CHARGE.ordinal();
+			return stateVector[5].ordinal() >= State.
+					MAIN_REGION_ON_BATTERY_DEFAULT.ordinal()&& stateVector[5].ordinal() <= State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CHARGE.ordinal();
 		case MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_NORMAL:
-			return stateVector[4] == State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_NORMAL;
+			return stateVector[5] == State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_NORMAL;
 		case MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_LOW:
-			return stateVector[4] == State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_LOW;
+			return stateVector[5] == State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_LOW;
 		case MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_DRAINED:
-			return stateVector[4] == State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_DRAINED;
+			return stateVector[5] == State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_DRAINED;
 		case MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CONSUME:
-			return stateVector[5] == State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CONSUME;
+			return stateVector[6] == State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CONSUME;
 		case MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CHARGE:
-			return stateVector[5] == State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CHARGE;
+			return stateVector[6] == State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CHARGE;
 		case MAIN_REGION_ON_HEALTH_GOOD:
-			return stateVector[6] == State.MAIN_REGION_ON_HEALTH_GOOD;
+			return stateVector[7] == State.MAIN_REGION_ON_HEALTH_GOOD;
 		case MAIN_REGION_ON_HEALTH_DEGRADED:
-			return stateVector[6] == State.MAIN_REGION_ON_HEALTH_DEGRADED;
+			return stateVector[7] == State.MAIN_REGION_ON_HEALTH_DEGRADED;
 		case MAIN_REGION_ON_HEALTH_BAD:
-			return stateVector[6] == State.MAIN_REGION_ON_HEALTH_BAD;
+			return stateVector[7] == State.MAIN_REGION_ON_HEALTH_BAD;
 		default:
 			return false;
 		}
@@ -773,6 +823,10 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	public Battery battery() {
 		return battery;
+	}
+	
+	public Emotion emotion() {
+		return emotion;
 	}
 	
 	protected void raiseAttentionNeeded() {
@@ -888,6 +942,65 @@ public class Onoff implements IStatemachine, ITimed {
 		}
 	}
 	
+	private boolean pet;
+	
+	
+	public void raisePet() {
+		synchronized(Onoff.this) {
+			inEventQueue.add(new Runnable() {
+				@Override
+				public void run() {
+					pet = true;
+				}
+			});
+			runCycle();
+		}
+	}
+	
+	private boolean raiseTemperature;
+	
+	
+	public void raiseRaiseTemperature() {
+		synchronized(Onoff.this) {
+			inEventQueue.add(new Runnable() {
+				@Override
+				public void run() {
+					raiseTemperature = true;
+				}
+			});
+			runCycle();
+		}
+	}
+	
+	private boolean lowerTemperature;
+	
+	
+	public void raiseLowerTemperature() {
+		synchronized(Onoff.this) {
+			inEventQueue.add(new Runnable() {
+				@Override
+				public void run() {
+					lowerTemperature = true;
+				}
+			});
+			runCycle();
+		}
+	}
+	
+	private long currentTemp;
+	
+	public synchronized long getCurrentTemp() {
+		synchronized(Onoff.this) {
+			return currentTemp;
+		}
+	}
+	
+	public void setCurrentTemp(long value) {
+		synchronized(Onoff.this) {
+			this.currentTemp = value;
+		}
+	}
+	
 	/* Entry action for state 'Stand'. */
 	private void entryAction_main_region_On_Legs_Stand() {
 		setEnergyReq(energyReqBaseline);
@@ -942,6 +1055,18 @@ public class Onoff implements IStatemachine, ITimed {
 		tail.raiseWagging();
 	}
 	
+	/* Entry action for state 'Normal'. */
+	private void entryAction_main_region_On_Emotion_Normal() {
+		emotion.raiseNormal();
+	}
+	
+	/* Entry action for state 'Love'. */
+	private void entryAction_main_region_On_Emotion_Love() {
+		timerService.setTimer(this, 4, (5 * 1000), false);
+		
+		emotion.raiseLove();
+	}
+	
 	/* Entry action for state 'Hot'. */
 	private void entryAction_main_region_On_Temperature_Sensor_Hot() {
 		setTemperaturePenalty(1);
@@ -978,12 +1103,12 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Entry action for state 'Consume'. */
 	private void entryAction_main_region_On_Battery_default_Energy_Consume() {
-		timerService.setTimer(this, 4, (1 * 1000), true);
+		timerService.setTimer(this, 5, (1 * 1000), true);
 	}
 	
 	/* Entry action for state 'Charge'. */
 	private void entryAction_main_region_On_Battery_default_Energy_Charge() {
-		timerService.setTimer(this, 5, (1 * 1000), true);
+		timerService.setTimer(this, 6, (1 * 1000), true);
 	}
 	
 	/* Exit action for state 'Walk'. */
@@ -1006,14 +1131,19 @@ public class Onoff implements IStatemachine, ITimed {
 		timerService.unsetTimer(this, 3);
 	}
 	
+	/* Exit action for state 'Love'. */
+	private void exitAction_main_region_On_Emotion_Love() {
+		timerService.unsetTimer(this, 4);
+	}
+	
 	/* Exit action for state 'Consume'. */
 	private void exitAction_main_region_On_Battery_default_Energy_Consume() {
-		timerService.unsetTimer(this, 4);
+		timerService.unsetTimer(this, 5);
 	}
 	
 	/* Exit action for state 'Charge'. */
 	private void exitAction_main_region_On_Battery_default_Energy_Charge() {
-		timerService.unsetTimer(this, 5);
+		timerService.unsetTimer(this, 6);
 	}
 	
 	/* 'default' enter sequence for state Off */
@@ -1027,6 +1157,7 @@ public class Onoff implements IStatemachine, ITimed {
 		enterSequence_main_region_On_Legs_default();
 		enterSequence_main_region_On_Voice_default();
 		enterSequence_main_region_On_Tail_default();
+		enterSequence_main_region_On_Emotion_default();
 		enterSequence_main_region_On_Temperature_Sensor_default();
 		enterSequence_main_region_On_Battery_default();
 		enterSequence_main_region_On_Health_default();
@@ -1088,25 +1219,39 @@ public class Onoff implements IStatemachine, ITimed {
 		stateConfVectorPosition = 2;
 	}
 	
+	/* 'default' enter sequence for state Normal */
+	private void enterSequence_main_region_On_Emotion_Normal_default() {
+		entryAction_main_region_On_Emotion_Normal();
+		stateVector[3] = State.MAIN_REGION_ON_EMOTION_NORMAL;
+		stateConfVectorPosition = 3;
+	}
+	
+	/* 'default' enter sequence for state Love */
+	private void enterSequence_main_region_On_Emotion_Love_default() {
+		entryAction_main_region_On_Emotion_Love();
+		stateVector[3] = State.MAIN_REGION_ON_EMOTION_LOVE;
+		stateConfVectorPosition = 3;
+	}
+	
 	/* 'default' enter sequence for state Hot */
 	private void enterSequence_main_region_On_Temperature_Sensor_Hot_default() {
 		entryAction_main_region_On_Temperature_Sensor_Hot();
-		stateVector[3] = State.MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT;
-		stateConfVectorPosition = 3;
+		stateVector[4] = State.MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT;
+		stateConfVectorPosition = 4;
 	}
 	
 	/* 'default' enter sequence for state Optimal */
 	private void enterSequence_main_region_On_Temperature_Sensor_Optimal_default() {
 		entryAction_main_region_On_Temperature_Sensor_Optimal();
-		stateVector[3] = State.MAIN_REGION_ON_TEMPERATURE_SENSOR_OPTIMAL;
-		stateConfVectorPosition = 3;
+		stateVector[4] = State.MAIN_REGION_ON_TEMPERATURE_SENSOR_OPTIMAL;
+		stateConfVectorPosition = 4;
 	}
 	
 	/* 'default' enter sequence for state Cold */
 	private void enterSequence_main_region_On_Temperature_Sensor_Cold_default() {
 		entryAction_main_region_On_Temperature_Sensor_Cold();
-		stateVector[3] = State.MAIN_REGION_ON_TEMPERATURE_SENSOR_COLD;
-		stateConfVectorPosition = 3;
+		stateVector[4] = State.MAIN_REGION_ON_TEMPERATURE_SENSOR_COLD;
+		stateConfVectorPosition = 4;
 	}
 	
 	/* 'default' enter sequence for state default */
@@ -1118,54 +1263,54 @@ public class Onoff implements IStatemachine, ITimed {
 	/* 'default' enter sequence for state Normal */
 	private void enterSequence_main_region_On_Battery_default_Status_Normal_default() {
 		entryAction_main_region_On_Battery_default_Status_Normal();
-		stateVector[4] = State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_NORMAL;
-		stateConfVectorPosition = 4;
+		stateVector[5] = State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_NORMAL;
+		stateConfVectorPosition = 5;
 	}
 	
 	/* 'default' enter sequence for state Low */
 	private void enterSequence_main_region_On_Battery_default_Status_Low_default() {
 		entryAction_main_region_On_Battery_default_Status_Low();
-		stateVector[4] = State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_LOW;
-		stateConfVectorPosition = 4;
+		stateVector[5] = State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_LOW;
+		stateConfVectorPosition = 5;
 	}
 	
 	/* 'default' enter sequence for state Drained */
 	private void enterSequence_main_region_On_Battery_default_Status_Drained_default() {
 		entryAction_main_region_On_Battery_default_Status_Drained();
-		stateVector[4] = State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_DRAINED;
-		stateConfVectorPosition = 4;
+		stateVector[5] = State.MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_DRAINED;
+		stateConfVectorPosition = 5;
 	}
 	
 	/* 'default' enter sequence for state Consume */
 	private void enterSequence_main_region_On_Battery_default_Energy_Consume_default() {
 		entryAction_main_region_On_Battery_default_Energy_Consume();
-		stateVector[5] = State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CONSUME;
-		stateConfVectorPosition = 5;
+		stateVector[6] = State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CONSUME;
+		stateConfVectorPosition = 6;
 	}
 	
 	/* 'default' enter sequence for state Charge */
 	private void enterSequence_main_region_On_Battery_default_Energy_Charge_default() {
 		entryAction_main_region_On_Battery_default_Energy_Charge();
-		stateVector[5] = State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CHARGE;
-		stateConfVectorPosition = 5;
+		stateVector[6] = State.MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CHARGE;
+		stateConfVectorPosition = 6;
 	}
 	
 	/* 'default' enter sequence for state Good */
 	private void enterSequence_main_region_On_Health_Good_default() {
-		stateVector[6] = State.MAIN_REGION_ON_HEALTH_GOOD;
-		stateConfVectorPosition = 6;
+		stateVector[7] = State.MAIN_REGION_ON_HEALTH_GOOD;
+		stateConfVectorPosition = 7;
 	}
 	
 	/* 'default' enter sequence for state Degraded */
 	private void enterSequence_main_region_On_Health_Degraded_default() {
-		stateVector[6] = State.MAIN_REGION_ON_HEALTH_DEGRADED;
-		stateConfVectorPosition = 6;
+		stateVector[7] = State.MAIN_REGION_ON_HEALTH_DEGRADED;
+		stateConfVectorPosition = 7;
 	}
 	
 	/* 'default' enter sequence for state Bad */
 	private void enterSequence_main_region_On_Health_Bad_default() {
-		stateVector[6] = State.MAIN_REGION_ON_HEALTH_BAD;
-		stateConfVectorPosition = 6;
+		stateVector[7] = State.MAIN_REGION_ON_HEALTH_BAD;
+		stateConfVectorPosition = 7;
 	}
 	
 	/* 'default' enter sequence for region main region */
@@ -1186,6 +1331,11 @@ public class Onoff implements IStatemachine, ITimed {
 	/* 'default' enter sequence for region Tail */
 	private void enterSequence_main_region_On_Tail_default() {
 		react_main_region_On_Tail__entry_Default();
+	}
+	
+	/* 'default' enter sequence for region Emotion */
+	private void enterSequence_main_region_On_Emotion_default() {
+		react_main_region_On_Emotion__entry_Default();
 	}
 	
 	/* 'default' enter sequence for region Temperature Sensor */
@@ -1224,6 +1374,7 @@ public class Onoff implements IStatemachine, ITimed {
 		exitSequence_main_region_On_Legs();
 		exitSequence_main_region_On_Voice();
 		exitSequence_main_region_On_Tail();
+		exitSequence_main_region_On_Emotion();
 		exitSequence_main_region_On_Temperature_Sensor();
 		exitSequence_main_region_On_Battery();
 		exitSequence_main_region_On_Health();
@@ -1285,74 +1436,88 @@ public class Onoff implements IStatemachine, ITimed {
 		stateConfVectorPosition = 2;
 	}
 	
-	/* Default exit sequence for state Hot */
-	private void exitSequence_main_region_On_Temperature_Sensor_Hot() {
+	/* Default exit sequence for state Normal */
+	private void exitSequence_main_region_On_Emotion_Normal() {
 		stateVector[3] = State.$NULLSTATE$;
 		stateConfVectorPosition = 3;
+	}
+	
+	/* Default exit sequence for state Love */
+	private void exitSequence_main_region_On_Emotion_Love() {
+		stateVector[3] = State.$NULLSTATE$;
+		stateConfVectorPosition = 3;
+		
+		exitAction_main_region_On_Emotion_Love();
+	}
+	
+	/* Default exit sequence for state Hot */
+	private void exitSequence_main_region_On_Temperature_Sensor_Hot() {
+		stateVector[4] = State.$NULLSTATE$;
+		stateConfVectorPosition = 4;
 	}
 	
 	/* Default exit sequence for state Optimal */
 	private void exitSequence_main_region_On_Temperature_Sensor_Optimal() {
-		stateVector[3] = State.$NULLSTATE$;
-		stateConfVectorPosition = 3;
+		stateVector[4] = State.$NULLSTATE$;
+		stateConfVectorPosition = 4;
 	}
 	
 	/* Default exit sequence for state Cold */
 	private void exitSequence_main_region_On_Temperature_Sensor_Cold() {
-		stateVector[3] = State.$NULLSTATE$;
-		stateConfVectorPosition = 3;
+		stateVector[4] = State.$NULLSTATE$;
+		stateConfVectorPosition = 4;
 	}
 	
 	/* Default exit sequence for state Normal */
 	private void exitSequence_main_region_On_Battery_default_Status_Normal() {
-		stateVector[4] = State.$NULLSTATE$;
-		stateConfVectorPosition = 4;
+		stateVector[5] = State.$NULLSTATE$;
+		stateConfVectorPosition = 5;
 	}
 	
 	/* Default exit sequence for state Low */
 	private void exitSequence_main_region_On_Battery_default_Status_Low() {
-		stateVector[4] = State.$NULLSTATE$;
-		stateConfVectorPosition = 4;
+		stateVector[5] = State.$NULLSTATE$;
+		stateConfVectorPosition = 5;
 	}
 	
 	/* Default exit sequence for state Drained */
 	private void exitSequence_main_region_On_Battery_default_Status_Drained() {
-		stateVector[4] = State.$NULLSTATE$;
-		stateConfVectorPosition = 4;
+		stateVector[5] = State.$NULLSTATE$;
+		stateConfVectorPosition = 5;
 	}
 	
 	/* Default exit sequence for state Consume */
 	private void exitSequence_main_region_On_Battery_default_Energy_Consume() {
-		stateVector[5] = State.$NULLSTATE$;
-		stateConfVectorPosition = 5;
+		stateVector[6] = State.$NULLSTATE$;
+		stateConfVectorPosition = 6;
 		
 		exitAction_main_region_On_Battery_default_Energy_Consume();
 	}
 	
 	/* Default exit sequence for state Charge */
 	private void exitSequence_main_region_On_Battery_default_Energy_Charge() {
-		stateVector[5] = State.$NULLSTATE$;
-		stateConfVectorPosition = 5;
+		stateVector[6] = State.$NULLSTATE$;
+		stateConfVectorPosition = 6;
 		
 		exitAction_main_region_On_Battery_default_Energy_Charge();
 	}
 	
 	/* Default exit sequence for state Good */
 	private void exitSequence_main_region_On_Health_Good() {
-		stateVector[6] = State.$NULLSTATE$;
-		stateConfVectorPosition = 6;
+		stateVector[7] = State.$NULLSTATE$;
+		stateConfVectorPosition = 7;
 	}
 	
 	/* Default exit sequence for state Degraded */
 	private void exitSequence_main_region_On_Health_Degraded() {
-		stateVector[6] = State.$NULLSTATE$;
-		stateConfVectorPosition = 6;
+		stateVector[7] = State.$NULLSTATE$;
+		stateConfVectorPosition = 7;
 	}
 	
 	/* Default exit sequence for state Bad */
 	private void exitSequence_main_region_On_Health_Bad() {
-		stateVector[6] = State.$NULLSTATE$;
-		stateConfVectorPosition = 6;
+		stateVector[7] = State.$NULLSTATE$;
+		stateConfVectorPosition = 7;
 	}
 	
 	/* Default exit sequence for region main region */
@@ -1400,6 +1565,17 @@ public class Onoff implements IStatemachine, ITimed {
 		}
 		
 		switch (stateVector[3]) {
+		case MAIN_REGION_ON_EMOTION_NORMAL:
+			exitSequence_main_region_On_Emotion_Normal();
+			break;
+		case MAIN_REGION_ON_EMOTION_LOVE:
+			exitSequence_main_region_On_Emotion_Love();
+			break;
+		default:
+			break;
+		}
+		
+		switch (stateVector[4]) {
 		case MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT:
 			exitSequence_main_region_On_Temperature_Sensor_Hot();
 			break;
@@ -1413,7 +1589,7 @@ public class Onoff implements IStatemachine, ITimed {
 			break;
 		}
 		
-		switch (stateVector[4]) {
+		switch (stateVector[5]) {
 		case MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_NORMAL:
 			exitSequence_main_region_On_Battery_default_Status_Normal();
 			break;
@@ -1427,7 +1603,7 @@ public class Onoff implements IStatemachine, ITimed {
 			break;
 		}
 		
-		switch (stateVector[5]) {
+		switch (stateVector[6]) {
 		case MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CONSUME:
 			exitSequence_main_region_On_Battery_default_Energy_Consume();
 			break;
@@ -1438,7 +1614,7 @@ public class Onoff implements IStatemachine, ITimed {
 			break;
 		}
 		
-		switch (stateVector[6]) {
+		switch (stateVector[7]) {
 		case MAIN_REGION_ON_HEALTH_GOOD:
 			exitSequence_main_region_On_Health_Good();
 			break;
@@ -1501,9 +1677,23 @@ public class Onoff implements IStatemachine, ITimed {
 		}
 	}
 	
+	/* Default exit sequence for region Emotion */
+	private void exitSequence_main_region_On_Emotion() {
+		switch (stateVector[3]) {
+		case MAIN_REGION_ON_EMOTION_NORMAL:
+			exitSequence_main_region_On_Emotion_Normal();
+			break;
+		case MAIN_REGION_ON_EMOTION_LOVE:
+			exitSequence_main_region_On_Emotion_Love();
+			break;
+		default:
+			break;
+		}
+	}
+	
 	/* Default exit sequence for region Temperature Sensor */
 	private void exitSequence_main_region_On_Temperature_Sensor() {
-		switch (stateVector[3]) {
+		switch (stateVector[4]) {
 		case MAIN_REGION_ON_TEMPERATURE_SENSOR_HOT:
 			exitSequence_main_region_On_Temperature_Sensor_Hot();
 			break;
@@ -1520,7 +1710,7 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Default exit sequence for region Battery */
 	private void exitSequence_main_region_On_Battery() {
-		switch (stateVector[4]) {
+		switch (stateVector[5]) {
 		case MAIN_REGION_ON_BATTERY_DEFAULT_STATUS_NORMAL:
 			exitSequence_main_region_On_Battery_default_Status_Normal();
 			break;
@@ -1534,7 +1724,7 @@ public class Onoff implements IStatemachine, ITimed {
 			break;
 		}
 		
-		switch (stateVector[5]) {
+		switch (stateVector[6]) {
 		case MAIN_REGION_ON_BATTERY_DEFAULT_ENERGY_CONSUME:
 			exitSequence_main_region_On_Battery_default_Energy_Consume();
 			break;
@@ -1548,7 +1738,7 @@ public class Onoff implements IStatemachine, ITimed {
 	
 	/* Default exit sequence for region Health */
 	private void exitSequence_main_region_On_Health() {
-		switch (stateVector[6]) {
+		switch (stateVector[7]) {
 		case MAIN_REGION_ON_HEALTH_GOOD:
 			exitSequence_main_region_On_Health_Good();
 			break;
@@ -1581,6 +1771,11 @@ public class Onoff implements IStatemachine, ITimed {
 	/* Default react sequence for initial entry  */
 	private void react_main_region_On_Tail__entry_Default() {
 		enterSequence_main_region_On_Tail_Idle_default();
+	}
+	
+	/* Default react sequence for initial entry  */
+	private void react_main_region_On_Emotion__entry_Default() {
+		enterSequence_main_region_On_Emotion_Normal_default();
 	}
 	
 	/* Default react sequence for initial entry  */
@@ -1621,6 +1816,7 @@ public class Onoff implements IStatemachine, ITimed {
 				enterSequence_main_region_On_Legs_default();
 				enterSequence_main_region_On_Voice_default();
 				enterSequence_main_region_On_Tail_default();
+				enterSequence_main_region_On_Emotion_default();
 				enterSequence_main_region_On_Temperature_Sensor_default();
 				enterSequence_main_region_On_Battery_default_Status_default();
 				enterSequence_main_region_On_Battery_default_Energy_Charge_default();
@@ -1644,7 +1840,7 @@ public class Onoff implements IStatemachine, ITimed {
 				exitSequence_main_region_On();
 				enterSequence_main_region_Off_default();
 				react(0);
-				transitioned_after = 6;
+				transitioned_after = 7;
 			}
 		}
 		/* If no transition was taken then execute local reactions */
@@ -1776,14 +1972,40 @@ public class Onoff implements IStatemachine, ITimed {
 		return transitioned_after;
 	}
 	
-	private long main_region_On_Temperature_Sensor_Hot_react(long transitioned_before) {
+	private long main_region_On_Emotion_Normal_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
 		if (transitioned_after<3) {
+			if (pet) {
+				exitSequence_main_region_On_Emotion_Normal();
+				enterSequence_main_region_On_Emotion_Love_default();
+				transitioned_after = 3;
+			}
+		}
+		return transitioned_after;
+	}
+	
+	private long main_region_On_Emotion_Love_react(long transitioned_before) {
+		long transitioned_after = transitioned_before;
+		
+		if (transitioned_after<3) {
+			if (timeEvents[4]) {
+				exitSequence_main_region_On_Emotion_Love();
+				enterSequence_main_region_On_Emotion_Normal_default();
+				transitioned_after = 3;
+			}
+		}
+		return transitioned_after;
+	}
+	
+	private long main_region_On_Temperature_Sensor_Hot_react(long transitioned_before) {
+		long transitioned_after = transitioned_before;
+		
+		if (transitioned_after<4) {
 			if (getCurrentTemp()<getHotTempThreshold()) {
 				exitSequence_main_region_On_Temperature_Sensor_Hot();
 				enterSequence_main_region_On_Temperature_Sensor_Optimal_default();
-				transitioned_after = 3;
+				transitioned_after = 4;
 			}
 		}
 		return transitioned_after;
@@ -1792,16 +2014,16 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Temperature_Sensor_Optimal_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<3) {
+		if (transitioned_after<4) {
 			if (getCurrentTemp()>=getHotTempThreshold()) {
 				exitSequence_main_region_On_Temperature_Sensor_Optimal();
 				enterSequence_main_region_On_Temperature_Sensor_Hot_default();
-				transitioned_after = 3;
+				transitioned_after = 4;
 			} else {
 				if (getCurrentTemp()<getColdTempThreshold()) {
 					exitSequence_main_region_On_Temperature_Sensor_Optimal();
 					enterSequence_main_region_On_Temperature_Sensor_Cold_default();
-					transitioned_after = 3;
+					transitioned_after = 4;
 				}
 			}
 		}
@@ -1811,11 +2033,11 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Temperature_Sensor_Cold_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<3) {
+		if (transitioned_after<4) {
 			if (getCurrentTemp()>=getColdTempThreshold()) {
 				exitSequence_main_region_On_Temperature_Sensor_Cold();
 				enterSequence_main_region_On_Temperature_Sensor_Optimal_default();
-				transitioned_after = 3;
+				transitioned_after = 4;
 			}
 		}
 		return transitioned_after;
@@ -1824,7 +2046,7 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Battery_default_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<4) {
+		if (transitioned_after<5) {
 		}
 		return transitioned_after;
 	}
@@ -1832,11 +2054,11 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Battery_default_Status_Normal_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<4) {
+		if (transitioned_after<5) {
 			if (getCurrentEnergy()<getLowEnergy()) {
 				exitSequence_main_region_On_Battery_default_Status_Normal();
 				enterSequence_main_region_On_Battery_default_Status_Low_default();
-				transitioned_after = 4;
+				transitioned_after = 5;
 			}
 		}
 		return transitioned_after;
@@ -1845,16 +2067,16 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Battery_default_Status_Low_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<4) {
+		if (transitioned_after<5) {
 			if (getCurrentEnergy()<=0) {
 				exitSequence_main_region_On_Battery_default_Status_Low();
 				enterSequence_main_region_On_Battery_default_Status_Drained_default();
-				transitioned_after = 4;
+				transitioned_after = 5;
 			} else {
 				if (getCurrentEnergy()>=getLowEnergy()) {
 					exitSequence_main_region_On_Battery_default_Status_Low();
 					enterSequence_main_region_On_Battery_default_Status_Normal_default();
-					transitioned_after = 4;
+					transitioned_after = 5;
 				}
 			}
 		}
@@ -1864,11 +2086,11 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Battery_default_Status_Drained_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<4) {
+		if (transitioned_after<5) {
 			if (getCurrentEnergy()>0) {
 				exitSequence_main_region_On_Battery_default_Status_Drained();
 				enterSequence_main_region_On_Battery_default_Status_Low_default();
-				transitioned_after = 4;
+				transitioned_after = 5;
 			}
 		}
 		return transitioned_after;
@@ -1877,17 +2099,17 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Battery_default_Energy_Consume_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<5) {
+		if (transitioned_after<6) {
 			if (((chargerConnected) && (isStateActive(State.MAIN_REGION_ON_LEGS_STAND)))) {
 				exitSequence_main_region_On_Battery_default_Energy_Consume();
 				enterSequence_main_region_On_Battery_default_Energy_Charge_default();
-				main_region_On_Battery_default_react(4);
-				transitioned_after = 5;
+				main_region_On_Battery_default_react(5);
+				transitioned_after = 6;
 			}
 		}
 		/* If no transition was taken then execute local reactions */
 		if (transitioned_after==transitioned_before) {
-			if (timeEvents[4]) {
+			if (timeEvents[5]) {
 				setCurrentEnergy(getCurrentEnergy() - energyReq);
 			}
 			transitioned_after = main_region_On_Battery_default_react(transitioned_before);
@@ -1898,17 +2120,17 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Battery_default_Energy_Charge_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<5) {
+		if (transitioned_after<6) {
 			if (chargerDisconnected) {
 				exitSequence_main_region_On_Battery_default_Energy_Charge();
 				enterSequence_main_region_On_Battery_default_Energy_Consume_default();
-				main_region_On_Battery_default_react(4);
-				transitioned_after = 5;
+				main_region_On_Battery_default_react(5);
+				transitioned_after = 6;
 			}
 		}
 		/* If no transition was taken then execute local reactions */
 		if (transitioned_after==transitioned_before) {
-			if (((timeEvents[5]) && (getCurrentEnergy()<getMaxEnergy()))) {
+			if (((timeEvents[6]) && (getCurrentEnergy()<getMaxEnergy()))) {
 				setCurrentEnergy(getCurrentEnergy() + ((energyReqBaseline * 5)));
 			}
 			transitioned_after = main_region_On_Battery_default_react(transitioned_before);
@@ -1919,12 +2141,12 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Health_Good_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<6) {
+		if (transitioned_after<7) {
 			if (((getHealthPoints() - getTemperaturePenalty()) - getBatteryPenalty())<3) {
 				exitSequence_main_region_On_Health_Good();
 				enterSequence_main_region_On_Health_Degraded_default();
 				main_region_On_react(0);
-				transitioned_after = 6;
+				transitioned_after = 7;
 			}
 		}
 		/* If no transition was taken then execute local reactions */
@@ -1937,12 +2159,12 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Health_Degraded_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<6) {
+		if (transitioned_after<7) {
 			if (((getHealthPoints() - getTemperaturePenalty()) - getBatteryPenalty())==3) {
 				exitSequence_main_region_On_Health_Degraded();
 				enterSequence_main_region_On_Health_Good_default();
 				main_region_On_react(0);
-				transitioned_after = 6;
+				transitioned_after = 7;
 			} else {
 				if (((getHealthPoints() - getTemperaturePenalty()) - getBatteryPenalty())<2) {
 					exitSequence_main_region_On_Health_Degraded();
@@ -1950,7 +2172,7 @@ public class Onoff implements IStatemachine, ITimed {
 					
 					enterSequence_main_region_On_Health_Bad_default();
 					main_region_On_react(0);
-					transitioned_after = 6;
+					transitioned_after = 7;
 				}
 			}
 		}
@@ -1964,12 +2186,12 @@ public class Onoff implements IStatemachine, ITimed {
 	private long main_region_On_Health_Bad_react(long transitioned_before) {
 		long transitioned_after = transitioned_before;
 		
-		if (transitioned_after<6) {
+		if (transitioned_after<7) {
 			if (((getHealthPoints() - getTemperaturePenalty()) - getBatteryPenalty())>=2) {
 				exitSequence_main_region_On_Health_Bad();
 				enterSequence_main_region_On_Health_Degraded_default();
 				main_region_On_react(0);
-				transitioned_after = 6;
+				transitioned_after = 7;
 			}
 		}
 		/* If no transition was taken then execute local reactions */

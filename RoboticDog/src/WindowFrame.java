@@ -36,7 +36,7 @@ public class WindowFrame extends JFrame {
 		ImageIcon image = new ImageIcon("icon.png");
 		this.setIconImage(image.getImage());
 		
-		this.setTitle("Test Title");
+		this.setTitle("RoboDog");
 		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		this.setSize(740,420);
 		this.setVisible(true);
